@@ -1,0 +1,38 @@
+```gitignore
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Editors
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Datasets
+data/
+dataset/
+datasets/
+chest_xray/
+
+# Temporary files
+*.log
+.pytest_cache/
+
+# Extracted model checkpoint folders
+weights/best_cnn_model/
+weights/best_hybrid_cnn_vit/
+weights/best_vit_pneumonia/
+
+# Large ViT model hosted separately
+weights/best_vit_pneumonia.pth
+```

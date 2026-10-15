@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pneumonia X-ray Analyzer</title>
+<style>
+:root{--bg:#EAEFF2;--surface:#F7F9FA;--ink:#13222B;--muted:#53656F;--line:#C9D4DA;--accent:#0E6B8C;--accent-soft:#CFE5EE;--warn:#B3401F;--warn-soft:#F3D9CF;--ok:#1F7A4D;--ok-soft:#D4EBDD;
+--serif:Georgia,"Times New Roman",serif;--sans:system-ui,-apple-system,"Segoe UI",sans-serif}
+@media (prefers-color-scheme:dark){:root{--bg:#0C1317;--surface:#141D23;--ink:#E3ECF0;--muted:#93A6B0;--line:#26343C;--accent:#6CC4E3;--accent-soft:#17323D;--warn:#F08A66;--warn-soft:#3A221A;--ok:#74D19C;--ok-soft:#173326}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 1rem/1.6 var(--sans)}
+.wrap{max-width:70rem;margin:0 auto;padding:2rem 1.25rem 4rem}
+h1,h2,h3{font-family:var(--serif);margin:0;line-height:1.15}
+h1{font-size:clamp(1.9rem,5vw,2.8rem)}h2{font-size:1.5rem;margin:2.5rem 0 .6rem}h3{font-size:1.15rem}
+.muted{color:var(--muted)}p{max-width:64ch}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:1.25rem}
+#drop{margin-top:1.5rem;border:2px dashed var(--line);border-radius:8px;padding:2rem 1rem;text-align:center;cursor:pointer;background:var(--surface)}
+#drop.over,#drop:focus-visible{border-color:var(--accent);outline:none}
+#preview{max-height:14rem;border-radius:4px;display:none;margin:0 auto .75rem}
+.ctl{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;margin-top:1rem}
+fieldset{border:1px solid var(--line);border-radius:6px;padding:.4rem .9rem;margin:0}
+legend{font-size:.85rem;color:var(--muted);padding:0 .3rem}
+label{margin-right:1rem;cursor:pointer}
+button{font:600 1rem var(--sans);background:var(--accent);color:var(--bg);border:0;border-radius:6px;padding:.7rem 1.5rem;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+#status{margin-top:1rem;min-height:1.5rem}
+.err{color:var(--warn);font-weight:600}
+.banner{margin-top:1.5rem;padding:1rem 1.25rem;border-radius:6px;border-left:4px solid}
+.banner.ok{background:var(--ok-soft);border-color:var(--ok)}.banner.mix{background:var(--warn-soft);border-color:var(--warn)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:1.25rem;margin-top:1.25rem}
+.card img{width:100%;border-radius:4px;display:block;margin-bottom:.75rem}
+.tag{display:inline-block;font-weight:600;padding:.15rem .6rem;border-radius:4px;margin:.3rem 0}
+.tag.P{background:var(--warn-soft);color:var(--warn)}.tag.N{background:var(--ok-soft);color:var(--ok)}
+.track{height:.7rem;background:var(--line);border-radius:2px;overflow:hidden}.fill{height:100%;background:var(--accent)}
+.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:32rem;font-size:.95rem}
+th,td{padding:.6rem .7rem;border-bottom:1px solid var(--line);text-align:right}th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:600;font-size:.85rem}
+.legend{height:.6rem;width:12rem;border-radius:3px;background:linear-gradient(90deg,#00008f,#00a0ff,#7fff7f,#ffa000,#8f0000);display:inline-block;vertical-align:middle;margin:0 .5rem}
+.note{border-left:3px solid var(--warn);padding-left:1rem}
+</style>
+</head>
+<body><div class="wrap">
+<h1>Pneumonia X-ray Analyzer</h1>
+<p class="muted">Upload a chest X-ray to see what three models predict (CNN, ViT-B/16 and Hybrid CNN-ViT) and where each one looked.</p>
+<p class="note"><strong>Research prototype.</strong> Not a medical device. It must not be used to diagnose or rule out pneumonia.</p>
+
+<div id="drop" tabindex="0" role="button" aria-label="Choose a chest X-ray image">
+  <img id="preview" alt="Selected X-ray preview">
+  <div id="dropText"><strong>Drop a chest X-ray here</strong><br><span class="muted">or click to choose a JPG or PNG file</span></div>
+  <input id="file" type="file" accept="image/png,image/jpeg" hidden>
+</div>
+<div class="ctl">
+  <fieldset><legend>Heatmap method</legend>
+    <label><input type="radio" name="m" value="gradcam" checked> Grad-CAM (fast)</label>
+    <label><input type="radio" name="m" value="scorecam"> Score-CAM (slower, no gradients)</label>
+  </fieldset>
+  <button id="go" disabled>Analyze image</button>
+</div>
+<div id="status" role="status" aria-live="polite"></div>
+
+<div id="out" hidden>
+  <div id="banner" class="banner"></div>
+  <div class="grid" id="cards"></div>
+  <p class="muted" style="margin-top:1rem">Heatmap colors: <span class="muted">low influence</span><span class="legend"></span><span class="muted">high influence</span>. A heatmap shows where the model looked, not where disease is confirmed.</p>
+</div>
+
+<h2>How the models compare</h2>
+<p class="muted">Results on the held-out test set of 1,172 images from the original dataset.</p>
+<div class="scroll panel"><table>
+<thead><tr><th>Model</th><th>Accuracy</th><th>Precision</th><th>Recall</th><th>F1</th><th>AUC</th></tr></thead>
+<tbody>
+<tr><td>CNN</td><td>95.73</td><td>97.30</td><td>96.84</td><td>97.07</td><td>98.34</td></tr>
+<tr><td>ViT-B/16</td><td>90.19</td><td>91.48</td><td>95.44</td><td>93.42</td><td>95.69</td></tr>
+<tr><td><strong>Hybrid CNN-ViT</strong></td><td>95.65</td><td>96.96</td><td>97.08</td><td>97.02</td><td>98.79</td></tr>
+</tbody></table></div>
+<p class="note" style="margin-top:1rem">On an external dataset (RSNA) the hybrid model reached only 45% accuracy. Predictions on X-rays from other hospitals or scanners may be unreliable.</p>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+let file=null;
+const drop=$('drop'), input=$('file');
+function setFile(f){
+  if(!f||!/^image\/(png|jpeg)$/.test(f.type)){$('status').innerHTML='<span class="err">Choose a JPG or PNG image.</span>';return}
+  file=f;$('preview').src=URL.createObjectURL(f);$('preview').style.display='block';
+  $('dropText').innerHTML='<span class="muted">'+f.name+' (click to change)</span>';
+  $('go').disabled=false;$('status').textContent='';
+}
+drop.onclick=()=>input.click();
+drop.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();input.click()}};
+input.onchange=()=>setFile(input.files[0]);
+['dragover','dragenter'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('over')}));
+['dragleave','drop'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove('over')}));
+drop.addEventListener('drop',e=>setFile(e.dataTransfer.files[0]));
+
+$('go').onclick=async()=>{
+  const method=document.querySelector('input[name=m]:checked').value;
+  const fd=new FormData();fd.append('file',file);fd.append('method',method);
+  $('go').disabled=true;$('out').hidden=true;
+  $('status').textContent=method==='scorecam'?'Analyzing with Score-CAM. This can take up to a minute on CPU...':'Analyzing...';
+  try{
+    const r=await fetch('/api/predict',{method:'POST',body:fd});
+    const j=await r.json();
+    if(!r.ok)throw new Error(j.detail||'Request failed');
+    render(j);$('status').textContent='';
+  }catch(e){$('status').innerHTML='<span class="err">'+e.message+'</span>'}
+  $('go').disabled=false;
+};
+
+function render(j){
+  const b=$('banner');
+  b.className='banner '+(j.agree?'ok':'mix');
+  b.innerHTML=j.agree?'<strong>All three models agree:</strong> '+j.models[0].label+'.'
+    :'<strong>The models disagree.</strong> Treat this result as uncertain.';
+  $('cards').innerHTML=j.models.map(m=>`
+    <div class="panel card"><img src="${m.heatmap}" alt="${m.name} heatmap">
+      <h3>${m.name}</h3>
+      <span class="tag ${m.label==='PNEUMONIA'?'P':'N'}">${m.label}</span>
+      <div class="muted" style="font-size:.9rem">Confidence ${(m.confidence*100).toFixed(1)}%</div>
+      <div class="track" style="margin:.4rem 0"><div class="fill" style="width:${m.p_pneumonia*100}%"></div></div>
+      <div class="muted" style="font-size:.85rem">Pneumonia probability ${(m.p_pneumonia*100).toFixed(1)}%</div>
+    </div>`).join('');
+  $('out').hidden=false;$('out').scrollIntoView({behavior:'smooth'});
+}
+</script>
+</body></html>

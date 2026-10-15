@@ -1,0 +1,9 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+pillow>=10.0
+numpy<2.2
+opencv-python-headless>=4.9
+tensorflow-cpu>=2.16,<2.20
+torch>=2.2
+torchvision>=0.17
